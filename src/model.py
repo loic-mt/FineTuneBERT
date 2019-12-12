@@ -1,13 +1,13 @@
 import torch
 import torch.nn as nn
-from transformers import BertModel
+from transformers import CamembertModel
 
 class SentimentClassifier(nn.Module):
 
     def __init__(self, freeze_bert = True):
         super(SentimentClassifier, self).__init__()
         #Instantiating BERT model object 
-        self.bert_layer = BertModel.from_pretrained('bert-base-uncased')
+        self.bert_layer = CamembertModel.from_pretrained('camembert-base')
         
         #Freeze bert layers
         if freeze_bert:
