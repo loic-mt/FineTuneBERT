@@ -34,8 +34,23 @@ def evaluate(net, criterion, dataloader, args):
 
     return mean_acc / count, mean_loss / count
 
+def predict(net, criterion, dataloader, args):
+    net.eval()
 
+    mean_acc, mean_loss = 0, 0
+    count = 0
 
+    with torch.no_grad():
+        for seq, attn_masks, labels in dataloader:
+            if args.gpu:
+                seq, attn_masks, labels = seq.cuda(args.gpu), attn_masks.cuda(args.gpu), labels.cuda(args.gpu)
+            logits = net(seq, attn_masks)
+            probs = torch.sigmoid(logits.unsqueeze(-1))
+            soft_probs = (probs > 0.5).long()
+            predicted = soft_probs.squeeze()
+            for pl in predicted.numpy():
+                print(pl)
+    
 def train(net, criterion, opti, train_loader, val_loader, args):
 
     best_acc = 0
@@ -63,15 +78,17 @@ def train(net, criterion, opti, train_loader, val_loader, args):
             if it % args.print_every == 0:
                 acc = get_accuracy_from_logits(logits, labels)
                 print("Iteration {} of epoch {} complete. Loss : {} Accuracy : {}".format(it, ep, loss.item(), acc))
-
-        
+ 
         val_acc, val_loss = evaluate(net, criterion, val_loader, args)
         print("Epoch {} complete! Validation Accuracy : {}, Validation Loss : {}".format(ep, val_acc, val_loss))
         if val_acc > best_acc:
             print("Best validation accuracy improved from {} to {}, saving model...".format(best_acc, val_acc))
             best_acc = val_acc
             torch.save(net.state_dict(), 'Models/sstcls_{}_freeze_{}.dat'.format(ep, args.freeze_bert))
-    
+
+def test(net, criterion, test_loader, args):
+    val_acc, val_loss = evaluate(net, criterion, test_loader, args)
+    print("Test Accuracy : {}, Test Loss : {}".format(val_acc, val_loss))
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -82,12 +99,23 @@ if __name__ == "__main__":
     parser.add_argument('-lr', type = float, default = 2e-5)
     parser.add_argument('-print_every', type = int, default= 100)
     parser.add_argument('-max_eps', type = int, default= 5)
+    parser.add_argument('-model')
+    
     args = parser.parse_args()
-
+    
     #Instantiating the classifier model
     print("Building model! (This might take time if you are running this for first time)")
     st = time.time()
-    net = SentimentClassifier(args.freeze_bert)
+    if args.model:
+        net = SentimentClassifier()
+        net.load_state_dict(torch.load(args.model))
+        test_set = SSTDataset(filename = args.test, maxlen = args.maxlen)
+        test_loader = DataLoader(test_set, batch_size = args.batch_size, num_workers = 5)
+        test(net, nn.BCEWithLogitsLoss(), test_loader, args)
+        predict(net, nn.BCEWithLogitsLoss(), test_loader, args)
+        exit(0)
+    else:
+        net = SentimentClassifier(args.freeze_bert)
     if args.gpu:
         net.cuda(args.gpu) #Enable gpu support for the model
     print("Done in {} seconds".format(time.time() - st))
@@ -111,5 +139,4 @@ if __name__ == "__main__":
     st = time.time()
     train(net, criterion, opti, train_loader, val_loader, args)
     print("Done in {} seconds".format(time.time() - st))
-
 
